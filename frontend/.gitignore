@@ -1,0 +1,23 @@
+# Ignore Python-related files (requirements, virtualenvs, etc.)
+*.py
+requirements.txt
+venv/
+__pycache__/
+
+# Node modules if you ever use Node (optional)
+node_modules/
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# IDE/editor folders
+.vscode/
+.idea/
+
+# Optional: backup files
+*.bak
+*.tmp

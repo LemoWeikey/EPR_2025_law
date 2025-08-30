@@ -1,6 +1,10 @@
 [build]
-command = ""
-publish = "frontend"
+  command = ""
+  publish = "frontend"
+
+[build.environment]
+  PYTHON_VERSION = ""   # disables Python build
+
 
 [[redirects]]
   from = "/api/*"

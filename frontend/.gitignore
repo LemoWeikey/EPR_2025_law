@@ -1,6 +1,9 @@
 # Ignore Python-related files (requirements, virtualenvs, etc.)
+# Ignore Python backend
+backend/
 *.py
 requirements.txt
+
 venv/
 __pycache__/
 

@@ -6,4 +6,8 @@ workDir = "backend"
 nixPkgs = ["python312", "poppler", "tesseract"]
 
 [start]
-cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"
+# Option 1: activate venv first
+cmd = ". /opt/venv/bin/activate && gunicorn app:app --bind 0.0.0.0:$PORT"
+
+# Option 2: direct path (alternative)
+# cmd = "/opt/venv/bin/gunicorn app:app --bind 0.0.0.0:$PORT"

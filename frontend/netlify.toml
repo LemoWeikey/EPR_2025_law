@@ -1,8 +1,21 @@
 [build]
-  publish = "."
+  # No build command needed for static HTML
+  command = ""
+  # Publish the frontend directory
+  publish = "frontend"
+
+# Optional: Add redirects if needed
+# [[redirects]]
+#   from = "/api/*"
+#   to = "https://your-railway-app.up.railway.app/api/:splat"
+#   status = 200
+
+[build.environment]
+  # No Python environment needed for static site
   
+# Optional: Set headers for better performance
 [[headers]]
   for = "/*"
   [headers.values]
-    X-Frame-Options = "SAMEORIGIN"
-    X-Content-Type-Options = "nosniff"
+    X-Frame-Options = "DENY"
+    X-XSS-Protection = "1; mode=block"

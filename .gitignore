@@ -38,10 +38,6 @@ env.bak/
 venv.bak/
 .venv/
 
-# Uploaded PDF files (keep your documents private)
-uploads/
-uploads/*
-*.pdf
 
 # IDE
 .vscode/

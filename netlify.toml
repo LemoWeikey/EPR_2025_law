@@ -1,0 +1,15 @@
+[build]
+command = ""
+publish = "frontend"
+
+[[redirects]]
+  from = "/api/*"
+  to = "https://web-production-c1082.up.railway.app/api/:splat"
+  status = 200
+  force = true
+
+[[headers]]
+for = "/*"
+[headers.values]
+X-Frame-Options = "DENY"
+X-XSS-Protection = "1; mode=block"

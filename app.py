@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory, render_template_string
+from flask import Flask, request, jsonify, send_from_directory
 import os
 from openai import OpenAI
 from PyPDF2 import PdfReader
@@ -10,48 +10,79 @@ from io import BytesIO
 from flask_cors import CORS
 
 load_dotenv()
-app = Flask(__name__, static_folder='frontend', static_url_path='/static')
+app = Flask(__name__)
 CORS(app)
 
-# Load API key
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Load API key with validation
+api_key = os.getenv("OPENAI_API_KEY")
+if not api_key:
+    print("❌ WARNING: OPENAI_API_KEY not found!")
+    client = None
+else:
+    print("✅ OpenAI API key loaded")
+    client = OpenAI(api_key=api_key)
 
 PDF_FOLDER = "uploads"
 os.makedirs(PDF_FOLDER, exist_ok=True)
 
-# ---------- Utility: Extract text ----------
+# ---------- Utility: Extract text (your original) ----------
 def extract_pdf_text(pdf_path):
     text = ""
     try:
+        print(f"🔍 Extracting text from: {pdf_path}")
         reader = PdfReader(pdf_path)
+        print(f"📄 PDF has {len(reader.pages)} pages")
+        
         for page in reader.pages:
             page_text = page.extract_text()
             if page_text:
                 text += page_text + "\n"
+        print(f"✅ Extracted {len(text)} characters with PyPDF2")
     except Exception as e:
-        print("PyPDF2 extraction failed:", e)
+        print(f"❌ PyPDF2 extraction failed: {e}")
 
     if not text.strip():
         print("⚠️ No text found, switching to OCR...")
         try:
+            print("🖼️ Converting PDF to images...")
             images = convert_from_path(pdf_path)
-            for img in images:
-                text += pytesseract.image_to_string(img) + "\n"
+            print(f"📸 Converted to {len(images)} images")
+            
+            for i, img in enumerate(images):
+                print(f"🔤 Running OCR on image {i+1}...")
+                ocr_text = pytesseract.image_to_string(img)
+                text += ocr_text + "\n"
+                print(f"✅ OCR extracted {len(ocr_text)} characters from image {i+1}")
+                
         except Exception as e:
-            print("OCR failed:", e)
+            print(f"❌ OCR failed: {e}")
+            print(f"❌ Error type: {type(e).__name__}")
+            import traceback
+            traceback.print_exc()
 
-    return text.strip()
+    final_text = text.strip()
+    print(f"📝 Final text length: {len(final_text)}")
+    if final_text:
+        print(f"📄 Preview: {final_text[:200]}...")
+    return final_text
 
-# ---------- Utility: Vision fallback ----------
+# ---------- Utility: Vision fallback (your original) ----------
 def summarize_with_vision(pdf_path):
+    print(f"👁️ Starting vision processing for: {pdf_path}")
     try:
-        images = convert_from_path(pdf_path, first_page=1, last_page=1)  # first page only
+        print("📷 Converting first page to image...")
+        images = convert_from_path(pdf_path, first_page=1, last_page=1)
+        print(f"✅ Converted {len(images)} images")
+        
+        print("🖼️ Encoding image to base64...")
         buffered = BytesIO()
         images[0].save(buffered, format="PNG")
         img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+        print(f"✅ Base64 encoded, length: {len(img_str)}")
 
+        print("🤖 Calling GPT-4o vision API...")
         response = client.chat.completions.create(
-            model="gpt-4o-mini",  # must be GPT-4o family for images
+            model="gpt-4o-mini",  # Your original model
             messages=[
                 {
                     "role": "system",
@@ -66,107 +97,33 @@ def summarize_with_vision(pdf_path):
                 },
             ],
         )
-        return response.choices[0].message.content
+        result = response.choices[0].message.content
+        print("✅ Vision API successful!")
+        return result
     except Exception as e:
-        print("Vision API failed:", e)
+        print(f"❌ Vision API failed: {e}")
+        print(f"❌ Error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         return None
 
 # ---------- Routes ----------
 @app.route("/", methods=["GET"])
 def index():
     """Serve the main HTML page"""
-    try:
-        # First try to serve from frontend folder
-        return send_from_directory("frontend", "index.html")
-    except:
-        # Fallback: serve inline HTML if frontend folder doesn't exist
-        return render_template_string("""
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>EcoSummarize</title>
-            <meta charset="UTF-8">
-        </head>
-        <body>
-            <h1>EcoSummarize - PDF AI Summary</h1>
-            <div id="pdf-list"></div>
-            <div id="summary-output"></div>
-            
-            <script>
-                // Load PDF list
-                fetch('/uploads')
-                    .then(response => response.json())
-                    .then(files => {
-                        const listDiv = document.getElementById('pdf-list');
-                        if (files.length > 0) {
-                            listDiv.innerHTML = '<h2>Available PDFs:</h2><ul>' + 
-                                files.map(f => `<li><a href="#" onclick="summarizePDF('${f.filename}')">${f.filename} (${f.size_mb} MB)</a></li>`).join('') + 
-                                '</ul>';
-                        } else {
-                            listDiv.innerHTML = '<p>No PDF files found. Please upload some PDFs to the uploads folder.</p>';
-                        }
-                    })
-                    .catch(err => {
-                        document.getElementById('pdf-list').innerHTML = '<p>Error loading PDFs: ' + err + '</p>';
-                        console.error('Error:', err);
-                    });
-
-                function summarizePDF(filename) {
-                    document.getElementById('summary-output').innerHTML = '<p>Generating summary...</p>';
-                    
-                    fetch('/chat', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json',
-                        },
-                        body: JSON.stringify({pdf: filename})
-                    })
-                    .then(response => response.json())
-                    .then(data => {
-                        if (data.answer) {
-                            document.getElementById('summary-output').innerHTML = 
-                                '<h2>Summary for ' + filename + ':</h2><div>' + data.answer.replace(/\\n/g, '<br>') + '</div>';
-                        } else {
-                            document.getElementById('summary-output').innerHTML = '<p>Error: ' + data.error + '</p>';
-                        }
-                    })
-                    .catch(err => {
-                        document.getElementById('summary-output').innerHTML = '<p>Error: ' + err + '</p>';
-                    });
-                }
-            </script>
-        </body>
-        </html>
-        """)
+    return send_from_directory("frontend", "index.html")
 
 @app.route("/uploads", methods=["GET"])
 def list_pdfs():
     """List all PDF files in the uploads folder"""
     files = []
     try:
-        # Check if uploads folder exists and create it if not
-        if not os.path.exists(PDF_FOLDER):
-            os.makedirs(PDF_FOLDER, exist_ok=True)
-            
-        print(f"Checking folder: {PDF_FOLDER}")
-        print(f"Folder exists: {os.path.exists(PDF_FOLDER)}")
-        
-        if os.path.exists(PDF_FOLDER):
-            folder_contents = os.listdir(PDF_FOLDER)
-            print(f"Folder contents: {folder_contents}")
-            
-            for f in folder_contents:
-                if f.lower().endswith(".pdf"):
-                    file_path = os.path.join(PDF_FOLDER, f)
-                    size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
-                    files.append({"filename": f, "size_mb": size_mb})
-                    print(f"Found PDF: {f}")
-        
-        print(f"Returning {len(files)} PDF files")
+        for f in os.listdir(PDF_FOLDER):
+            if f.endswith(".pdf"):
+                size_mb = round(os.path.getsize(os.path.join(PDF_FOLDER, f)) / (1024 * 1024), 2)
+                files.append({"filename": f, "size_mb": size_mb})
         return jsonify(files)
-        
     except Exception as e:
-        print(f"Error listing files: {str(e)}")
         return jsonify({"error": f"Could not list files: {str(e)}"}), 500
 
 @app.route("/uploads/<filename>", methods=["GET"])
@@ -179,28 +136,97 @@ def serve_pdf(filename):
 
 @app.route("/debug", methods=["GET"])
 def debug():
-    """Debug route to check file system"""
+    """Debug system dependencies"""
+    debug_info = {
+        "openai_api_configured": bool(api_key),
+        "pdf_folder_exists": os.path.exists(PDF_FOLDER),
+        "uploads_contents": os.listdir(PDF_FOLDER) if os.path.exists(PDF_FOLDER) else []
+    }
+    
+    # Test system dependencies
     try:
-        current_dir = os.getcwd()
-        uploads_exists = os.path.exists(PDF_FOLDER)
-        uploads_contents = []
-        
-        if uploads_exists:
-            uploads_contents = os.listdir(PDF_FOLDER)
-        
-        return jsonify({
-            "current_directory": current_dir,
-            "uploads_folder_exists": uploads_exists,
-            "uploads_path": os.path.abspath(PDF_FOLDER),
-            "uploads_contents": uploads_contents,
-            "all_files_in_current_dir": os.listdir(".")
-        })
+        import pdf2image
+        debug_info["pdf2image_available"] = True
+    except ImportError as e:
+        debug_info["pdf2image_available"] = False
+        debug_info["pdf2image_error"] = str(e)
+    
+    try:
+        import pytesseract
+        debug_info["pytesseract_available"] = True
+        # Test tesseract executable
+        pytesseract.get_tesseract_version()
+        debug_info["tesseract_executable_works"] = True
     except Exception as e:
-        return jsonify({"error": str(e)})
+        debug_info["pytesseract_available"] = True
+        debug_info["tesseract_executable_works"] = False
+        debug_info["tesseract_error"] = str(e)
+    
+    # Test poppler (needed for pdf2image)
+    try:
+        import subprocess
+        result = subprocess.run(['pdftoppm', '-h'], capture_output=True)
+        debug_info["poppler_available"] = result.returncode == 0
+    except Exception as e:
+        debug_info["poppler_available"] = False
+        debug_info["poppler_error"] = str(e)
+    
+    return jsonify(debug_info)
+
+@app.route("/test-extraction/<filename>", methods=["GET"])
+def test_extraction(filename):
+    """Test each extraction method separately"""
+    pdf_path = os.path.join(PDF_FOLDER, filename)
+    if not os.path.exists(pdf_path):
+        return jsonify({"error": f"File not found: {filename}"}), 404
+    
+    results = {"filename": filename}
+    
+    # Test PyPDF2
+    try:
+        reader = PdfReader(pdf_path)
+        text = ""
+        for page in reader.pages:
+            page_text = page.extract_text()
+            if page_text:
+                text += page_text + "\n"
+        results["pypdf2"] = {
+            "success": True,
+            "text_length": len(text.strip()),
+            "preview": text.strip()[:200] if text.strip() else ""
+        }
+    except Exception as e:
+        results["pypdf2"] = {"success": False, "error": str(e)}
+    
+    # Test pdf2image
+    try:
+        images = convert_from_path(pdf_path, first_page=1, last_page=1)
+        results["pdf2image"] = {
+            "success": True,
+            "images_created": len(images),
+            "image_size": images[0].size if images else None
+        }
+    except Exception as e:
+        results["pdf2image"] = {"success": False, "error": str(e)}
+    
+    # Test pytesseract (only if pdf2image worked)
+    if results.get("pdf2image", {}).get("success"):
+        try:
+            images = convert_from_path(pdf_path, first_page=1, last_page=1)
+            ocr_text = pytesseract.image_to_string(images[0])
+            results["pytesseract"] = {
+                "success": True,
+                "text_length": len(ocr_text.strip()),
+                "preview": ocr_text.strip()[:200] if ocr_text.strip() else ""
+            }
+        except Exception as e:
+            results["pytesseract"] = {"success": False, "error": str(e)}
+    
+    return jsonify(results)
 
 @app.route("/chat", methods=["POST"])
 def chat():
-    """Generate AI summary for a PDF file"""
+    """Generate AI summary for a PDF file - YOUR ORIGINAL LOGIC"""
     data = request.get_json()
     pdf_filename = data.get("pdf")
 
@@ -209,15 +235,21 @@ def chat():
 
     pdf_path = os.path.join(PDF_FOLDER, pdf_filename)
     if not os.path.exists(pdf_path):
-        return jsonify({"error": f"File not found: {pdf_path}"}), 404
+        return jsonify({"error": "File not found"}), 404
+
+    if not client:
+        return jsonify({"error": "OpenAI API key not configured"}), 500
 
     try:
-        # Step 1: Extract text
+        print(f"🚀 Processing: {pdf_filename}")
+        
+        # Step 1: Extract text (your original approach)
         text = extract_pdf_text(pdf_path)
 
         if text:
-            # Summarize extracted text with GPT-3.5
+            # Summarize extracted text with GPT-3.5 (your original)
             try:
+                print("🤖 Using GPT-3.5 for text summary...")
                 response = client.chat.completions.create(
                     model="gpt-3.5-turbo",
                     messages=[
@@ -227,23 +259,30 @@ def chat():
                         },
                         {
                             "role": "user",
-                            "content": f"Hãy tóm tắt tài liệu PDF này:\n\n{text}"
+                            "content": f"Hãy tóm tắt tài liệu PDF này:\\n\\n{text}"
                         }
                     ],
                 )
                 answer = response.choices[0].message.content
+                print("✅ GPT-3.5 summary completed")
                 return jsonify({"answer": answer})
             except Exception as e:
+                print(f"❌ GPT-3.5 failed: {e}")
                 return jsonify({"error": f"LLM error: {str(e)}"}), 500
         else:
-            # Step 2: Vision fallback with GPT-4o-mini
+            # Step 2: Vision fallback with GPT-4o-mini (your original)
+            print("🔄 Falling back to vision processing...")
             vision_summary = summarize_with_vision(pdf_path)
             if vision_summary:
+                print("✅ Vision summary completed")
                 return jsonify({"answer": vision_summary})
             else:
                 return jsonify({"error": "Could not extract any text or summarize PDF"}), 500
                 
     except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": f"Processing error: {str(e)}"}), 500
 
 if __name__ == "__main__":
@@ -251,11 +290,6 @@ if __name__ == "__main__":
     print("🌱 EcoSummarize Server Starting...")
     print("📁 Upload folder:", PDF_FOLDER)
     print(f"🌐 Server: http://0.0.0.0:{port}")
-    
-    # Debug info
-    print(f"Current working directory: {os.getcwd()}")
-    print(f"Uploads folder exists: {os.path.exists(PDF_FOLDER)}")
-    if os.path.exists(PDF_FOLDER):
-        print(f"Files in uploads: {os.listdir(PDF_FOLDER)}")
+    print(f"🤖 OpenAI configured: {'Yes' if client else 'No'}")
     
     app.run(host="0.0.0.0", port=port, debug=False)

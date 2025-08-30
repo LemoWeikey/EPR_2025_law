@@ -3,15 +3,14 @@ language = "python"
 workDir = "backend"
 
 [phases.setup]
-# Install Python and system deps
 nixPkgs = ["python312", "poppler", "tesseract"]
 
-# Force pip to install packages globally so binaries are on PATH
+# Install pip and dependencies globally
 commands = [
+    "python -m ensurepip --upgrade",
     "python -m pip install --upgrade pip",
     "python -m pip install --no-cache-dir -r requirements.txt"
 ]
 
 [start]
-# Use gunicorn from global environment
 cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"

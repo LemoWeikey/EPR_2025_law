@@ -1,5 +1,8 @@
 [phases.setup]
 nixPkgs = ["python312", "poppler", "tesseract"]
 
+[metadata]
+workDir = "backend"
+
 [start]
 cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"

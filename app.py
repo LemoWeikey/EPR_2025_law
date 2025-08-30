@@ -75,7 +75,8 @@ def summarize_with_vision(pdf_path):
 @app.route("/", methods=["GET"])
 def index():
     """Serve the main HTML page"""
-    return send_from_directory(".", "index.html")
+    return send_from_directory("frontend", "index.html")
+
 
 @app.route("/uploads", methods=["GET"])
 def list_pdfs():

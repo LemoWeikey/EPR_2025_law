@@ -1,9 +1,9 @@
 [build]
   builder = "nixpacks"
-  buildCommand = "cd backend && pip install -r requirements.txt"
+  buildCommand = "cd rag-epr-2025 && pip install -r requirements.txt"
 
 [deploy]
-  startCommand = "cd backend && gunicorn app:app"
+  startCommand = "cd rag-epr-2025 && gunicorn app:app"
   restartPolicyType = "on_failure"
 
 [env]

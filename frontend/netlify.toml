@@ -7,7 +7,7 @@
 # Optional: Add redirects if needed
 # [[redirects]]
 #   from = "/api/*"
-#   to = "https://your-railway-app.up.railway.app/api/:splat"
+#   to = "https://web-production-c1082.up.railway.app//api/:splat"
 #   status = 200
 
 [build.environment]

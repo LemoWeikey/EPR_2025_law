@@ -1,8 +1,21 @@
+# nixpacks.toml
+
+# --------------------
+# Setup phase
+# --------------------
 [phases.setup]
+# Required system packages
 nixPkgs = ["python312", "poppler", "tesseract"]
 
+# --------------------
+# Metadata
+# --------------------
 [metadata]
-workDir = "backend"
+language = "python"
+workDir = "backend"  # backend contains app.py and requirements.txt
 
+# --------------------
+# Start command
+# --------------------
 [start]
 cmd = "gunicorn app:app --bind 0.0.0.0:$PORT"

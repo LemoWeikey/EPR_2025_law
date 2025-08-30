@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, send_from_directory
+from flask import Flask, request, jsonify, send_from_directory, render_template_string
 import os
 from openai import OpenAI
 from PyPDF2 import PdfReader
@@ -10,7 +10,7 @@ from io import BytesIO
 from flask_cors import CORS
 
 load_dotenv()
-app = Flask(__name__)
+app = Flask(__name__, static_folder='frontend', static_url_path='/static')
 CORS(app)
 
 # Load API key
@@ -75,20 +75,98 @@ def summarize_with_vision(pdf_path):
 @app.route("/", methods=["GET"])
 def index():
     """Serve the main HTML page"""
-    return send_from_directory("frontend", "index.html")
+    try:
+        # First try to serve from frontend folder
+        return send_from_directory("frontend", "index.html")
+    except:
+        # Fallback: serve inline HTML if frontend folder doesn't exist
+        return render_template_string("""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>EcoSummarize</title>
+            <meta charset="UTF-8">
+        </head>
+        <body>
+            <h1>EcoSummarize - PDF AI Summary</h1>
+            <div id="pdf-list"></div>
+            <div id="summary-output"></div>
+            
+            <script>
+                // Load PDF list
+                fetch('/uploads')
+                    .then(response => response.json())
+                    .then(files => {
+                        const listDiv = document.getElementById('pdf-list');
+                        if (files.length > 0) {
+                            listDiv.innerHTML = '<h2>Available PDFs:</h2><ul>' + 
+                                files.map(f => `<li><a href="#" onclick="summarizePDF('${f.filename}')">${f.filename} (${f.size_mb} MB)</a></li>`).join('') + 
+                                '</ul>';
+                        } else {
+                            listDiv.innerHTML = '<p>No PDF files found. Please upload some PDFs to the uploads folder.</p>';
+                        }
+                    })
+                    .catch(err => {
+                        document.getElementById('pdf-list').innerHTML = '<p>Error loading PDFs: ' + err + '</p>';
+                        console.error('Error:', err);
+                    });
 
+                function summarizePDF(filename) {
+                    document.getElementById('summary-output').innerHTML = '<p>Generating summary...</p>';
+                    
+                    fetch('/chat', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify({pdf: filename})
+                    })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.answer) {
+                            document.getElementById('summary-output').innerHTML = 
+                                '<h2>Summary for ' + filename + ':</h2><div>' + data.answer.replace(/\\n/g, '<br>') + '</div>';
+                        } else {
+                            document.getElementById('summary-output').innerHTML = '<p>Error: ' + data.error + '</p>';
+                        }
+                    })
+                    .catch(err => {
+                        document.getElementById('summary-output').innerHTML = '<p>Error: ' + err + '</p>';
+                    });
+                }
+            </script>
+        </body>
+        </html>
+        """)
 
 @app.route("/uploads", methods=["GET"])
 def list_pdfs():
     """List all PDF files in the uploads folder"""
     files = []
     try:
-        for f in os.listdir(PDF_FOLDER):
-            if f.endswith(".pdf"):
-                size_mb = round(os.path.getsize(os.path.join(PDF_FOLDER, f)) / (1024 * 1024), 2)
-                files.append({"filename": f, "size_mb": size_mb})
+        # Check if uploads folder exists and create it if not
+        if not os.path.exists(PDF_FOLDER):
+            os.makedirs(PDF_FOLDER, exist_ok=True)
+            
+        print(f"Checking folder: {PDF_FOLDER}")
+        print(f"Folder exists: {os.path.exists(PDF_FOLDER)}")
+        
+        if os.path.exists(PDF_FOLDER):
+            folder_contents = os.listdir(PDF_FOLDER)
+            print(f"Folder contents: {folder_contents}")
+            
+            for f in folder_contents:
+                if f.lower().endswith(".pdf"):
+                    file_path = os.path.join(PDF_FOLDER, f)
+                    size_mb = round(os.path.getsize(file_path) / (1024 * 1024), 2)
+                    files.append({"filename": f, "size_mb": size_mb})
+                    print(f"Found PDF: {f}")
+        
+        print(f"Returning {len(files)} PDF files")
         return jsonify(files)
+        
     except Exception as e:
+        print(f"Error listing files: {str(e)}")
         return jsonify({"error": f"Could not list files: {str(e)}"}), 500
 
 @app.route("/uploads/<filename>", methods=["GET"])
@@ -98,6 +176,27 @@ def serve_pdf(filename):
         return send_from_directory(PDF_FOLDER, filename)
     except Exception as e:
         return jsonify({"error": "File not found"}), 404
+
+@app.route("/debug", methods=["GET"])
+def debug():
+    """Debug route to check file system"""
+    try:
+        current_dir = os.getcwd()
+        uploads_exists = os.path.exists(PDF_FOLDER)
+        uploads_contents = []
+        
+        if uploads_exists:
+            uploads_contents = os.listdir(PDF_FOLDER)
+        
+        return jsonify({
+            "current_directory": current_dir,
+            "uploads_folder_exists": uploads_exists,
+            "uploads_path": os.path.abspath(PDF_FOLDER),
+            "uploads_contents": uploads_contents,
+            "all_files_in_current_dir": os.listdir(".")
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)})
 
 @app.route("/chat", methods=["POST"])
 def chat():
@@ -110,7 +209,7 @@ def chat():
 
     pdf_path = os.path.join(PDF_FOLDER, pdf_filename)
     if not os.path.exists(pdf_path):
-        return jsonify({"error": "File not found"}), 404
+        return jsonify({"error": f"File not found: {pdf_path}"}), 404
 
     try:
         # Step 1: Extract text
@@ -152,4 +251,11 @@ if __name__ == "__main__":
     print("🌱 EcoSummarize Server Starting...")
     print("📁 Upload folder:", PDF_FOLDER)
     print(f"🌐 Server: http://0.0.0.0:{port}")
+    
+    # Debug info
+    print(f"Current working directory: {os.getcwd()}")
+    print(f"Uploads folder exists: {os.path.exists(PDF_FOLDER)}")
+    if os.path.exists(PDF_FOLDER):
+        print(f"Files in uploads: {os.listdir(PDF_FOLDER)}")
+    
     app.run(host="0.0.0.0", port=port, debug=False)
